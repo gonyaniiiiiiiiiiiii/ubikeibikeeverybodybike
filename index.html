@@ -2,116 +2,52 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <title>最近Ubike站 </title>
+  <title>定位除錯最小版</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    body { font-family: sans-serif; margin: 0; padding: 10px; }
-    #map { height: 60vh; margin-top: 10px; }
-    button { padding: 10px 16px; font-size: 16px; }
-  </style>
 </head>
 <body>
-  <h2>🚲最近Ubike站</h2>
-  <button onclick="findNearestUbike()">📍 使用手機定位（除錯版）</button>
-  <div id="status" style="margin-top:8px;color:#555;"></div>
-  <pre id="debug" style="background:#f5f5f5;padding:8px;"></pre>
+  <h2>📍 iPhone 定位除錯（最小可運作版）</h2>
+  <button id="btn">開始定位</button>
+  <pre id="out"></pre>
 
-  <pre id="result"()">📍 使用手機定位</button>
-  <pre id="result"></pre>
-  <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const API_URL = "https://tdx.transportdata.tw/api/basic/v2/Bike/Availability/City/Kaohsiung?$top=50&$format=JSON";
-    let map;
-
-    function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const toRad = d => d * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-                Math.sin(dLon / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
+    const out = document.getElementById('out');
+    const btn = document.getElementById('btn');
 
     function log(msg) {
-      document.getElementById("debug").textContent += msg + "\n";
+      out.textContent += msg + '\n';
     }
 
-    function setStatus(msg) {
-      document.getElementById("status").textContent = msg;
-    }
-
-    function findNearestUbike() {
-      document.getElementById("debug").textContent = "";
-      setStatus("開始請求定位…");
-      log("navigator.geolocation=" + !!navigator.geolocation);
+    btn.onclick = () => {
+      out.textContent = '';
+      log('點擊按鈕');
+      log('geolocation 是否存在: ' + !!navigator.geolocation);
 
       if (!navigator.geolocation) {
-        alert("此瀏覽器不支援定位");
+        log('❌ 瀏覽器不支援定位');
         return;
       }
 
-            navigator.geolocation.getCurrentPosition(async pos => {
-                setStatus("定位成功，取得座標");
-        log("latitude=" + pos.coords.latitude);
-        log("longitude=" + pos.coords.longitude);
-        log("accuracy=" + pos.coords.accuracy + " 公尺");
-
-        const userLat = pos.coords.latitude;
-        const userLon = pos.coords.longitude;
-
-        const res = await fetch(API_URL);
-        const data = await res.json();
-
-        let nearest = null;
-        let minDist = Infinity;
-
-        data.forEach(station => {
-          if (station.AvailableRentBikes === 0) return; // 只找有車的
-          const lat = station.StationLatitude;
-          const lon = station.StationLongitude;
-          const dist = haversine(userLat, userLon, lat, lon);
-          if (dist < minDist) {
-            minDist = dist;
-            nearest = station;
-          }
-        });
-
-        document.getElementById("result").textContent =
-          `最近站點：${nearest.StationName.Zh_tw}\n` +
-          `距離：約 ${minDist.toFixed(0)} 公尺\n` +
-          `可借車：${nearest.AvailableRentBikes}`;
-
-        if (!map) {
-          map = L.map('map').setView([userLat, userLon], 16);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-          }).addTo(map);
+      log('開始請求定位…');
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          log('✅ 定位成功');
+          log('lat=' + pos.coords.latitude);
+          log('lon=' + pos.coords.longitude);
+          log('accuracy=' + pos.coords.accuracy + 'm');
+        },
+        err => {
+          log('❌ 定位失敗');
+          log('code=' + err.code);
+          log('message=' + err.message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
         }
-
-        L.marker([userLat, userLon]).addTo(map)
-          .bindPopup('你的位置').openPopup();
-
-        const stationLat = nearest.StationLatitude;
-        const stationLon = nearest.StationLongitude;
-
-        L.marker([stationLat, stationLon]).addTo(map)
-          .bindPopup(`<b>${nearest.StationName.Zh_tw}</b><br/>
-          <a href="https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${stationLat},${stationLon}" target="_blank">🧭 導航到這裡</a>`)
-          .openPopup();
-
-        map.setView([stationLat, stationLon], 17);
-      }, err => {
-                setStatus("定位失敗");
-        log("錯誤碼=" + err.code);
-        log("錯誤訊息=" + err.message);
-        alert("定位失敗："：" + err.message);
-      });
-    }
+      );
+    };
   </script>
 </body>
 </html>
