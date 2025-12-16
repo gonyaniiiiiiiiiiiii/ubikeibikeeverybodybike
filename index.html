@@ -14,70 +14,38 @@
   <pre id="out">請點上方按鈕</pre>
 
   <script>
-    // ⭐⭐⭐ 只改這一行 ⭐⭐⭐
-    const API_BASE = "https://ubike-proxy.onrender.com";
+    
+const API_BASE = "https://你的-render-網址"; // 再確認一次
 
-    function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const toRad = d => d * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2)**2 +
-                Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
-                Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
+function log(msg) {
+  document.getElementById('out').textContent = msg;
+}
 
-    async function find(mode) {
-      document.getElementById('out').textContent = '📍 定位中…';
+async function find(mode) {
+  try {
+    log('📍 定位中…');
 
-      const pos = await new Promise((ok, err) =>
-        navigator.geolocation.getCurrentPosition(ok, err)
-      );
+    const pos = await new Promise((ok, err) =>
+      navigator.geolocation.getCurrentPosition(ok, err)
+    );
 
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
+    log('🌐 連線後端中（station）…');
+    const stationRes = await fetch(API_BASE + '/bike/station');
+    log('🌐 station 回應中…');
+    const stations = await stationRes.json();
 
-      document.getElementById('out').textContent = '🔍 取得 Ubike 資料…';
+    log('🌐 連線後端中（availability）…');
+    const availRes = await fetch(API_BASE + '/bike/availability');
+    log('🌐 availability 回應中…');
+    const availability = await availRes.json();
 
-      const [stations, availability] = await Promise.all([
-        fetch(API_BASE + '/bike/station').then(r => r.json()),
-        fetch(API_BASE + '/bike/availability').then(r => r.json())
-      ]);
+    log(`✅ 取得 ${stations.length} 站點 / ${availability.length} 狀態`);
 
-      let best = null;
-      let min = Infinity;
+  } catch (e) {
+    log('❌ 發生錯誤：\n' + e.message);
+  }
+}
+</script>
 
-      availability.forEach(a => {
-        if (mode === 'rent' && a.AvailableRentBikes === 0) return;
-        if (mode === 'return' && a.AvailableReturnBikes === 0) return;
-
-        const s = stations.find(st => st.StationUID === a.StationUID);
-        if (!s) return;
-
-        const d = haversine(
-          lat, lon,
-          s.StationPosition.PositionLat,
-          s.StationPosition.PositionLon
-        );
-
-        if (d < min) {
-          min = d;
-          best = { s, a };
-        }
-      });
-
-      if (!best) {
-        document.getElementById('out').textContent = '❌ 附近沒有符合的站點';
-        return;
-      }
-
-      document.getElementById('out').textContent =
-        `站點：${best.s.StationName.Zh_tw}\n` +
-        `距離：約 ${min.toFixed(0)} 公尺\n` +
-        `可借車：${best.a.AvailableRentBikes}\n` +
-        `可還車位：${best.a.AvailableReturnBikes}`;
-    }
-  </script>
 </body>
 </html>
