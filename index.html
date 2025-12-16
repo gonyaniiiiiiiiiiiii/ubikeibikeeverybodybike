@@ -4,9 +4,14 @@
   <meta charset="UTF-8">
   <title>Ubike 最近站點</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont; padding: 16px; }
+    button { font-size: 18px; padding: 10px 14px; margin: 6px 6px 6px 0; }
+    pre { background: #f5f5f5; padding: 12px; border-radius: 8px; }
+  </style>
 </head>
 <body>
-  <h2>🚲 Ubike（高雄）</h2>
+  <h2>🚲 Ubike 最近站點（高雄）</h2>
 
   <button onclick="find('rent')">🚲 找可借車</button>
   <button onclick="find('return')">🅿️ 找可還車</button>
@@ -14,38 +19,89 @@
   <pre id="out">請點上方按鈕</pre>
 
   <script>
+    const API_BASE = "https://ubike-proxy.onrender.com";
 
-  const API_BASE = "https://ubike-proxy.onrender.com";
-
-  function log(msg) {
-    document.getElementById('out').textContent = msg;
-  }
-
-  async function find(mode) {
-    try {
-      log('📍 定位中…');
-
-      const pos = await new Promise((ok, err) =>
-        navigator.geolocation.getCurrentPosition(ok, err)
-      );
-
-      log('🌐 呼叫 /bike/station …');
-      const r1 = await fetch(API_BASE + '/bike/station');
-      log('🌐 station status = ' + r1.status);
-      const stations = await r1.json();
-
-      log('🌐 呼叫 /bike/availability …');
-      const r2 = await fetch(API_BASE + '/bike/availability');
-      log('🌐 availability status = ' + r2.status);
-      const availability = await r2.json();
-
-      log(`✅ 成功：${stations.length} / ${availability.length}`);
-
-    } catch (e) {
-      log(
-        '❌ 錯誤名稱：' + e.name + '\n' +
-        '❌ 錯誤訊息：' + e.message
-      );
+    function log(msg) {
+      document.getElementById('out').textContent = msg;
     }
-  }
-</script>
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat/2) ** 2 +
+        Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon/2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    async function find(mode) {
+      try {
+        log('📍 取得手機定位中…');
+
+        const pos = await new Promise((ok, err) =>
+          navigator.geolocation.getCurrentPosition(ok, err, {
+            enableHighAccuracy: true,
+            timeout: 10000
+          })
+        );
+
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        log('🌐 取得 Ubike 資料中…');
+
+        const [stations, availability] = await Promise.all([
+          fetch(API_BASE + '/bike/station', { cache: 'no-store' }).then(r => r.json()),
+          fetch(API_BASE + '/bike/availability', { cache: 'no-store' }).then(r => r.json())
+        ]);
+
+        let best = null;
+        let min = Infinity;
+
+        availability.forEach(a => {
+          if (mode === 'rent' && a.AvailableRentBikes === 0) return;
+          if (mode === 'return' && a.AvailableReturnBikes === 0) return;
+
+          const s = stations.find(st => st.StationUID === a.StationUID);
+          if (!s) return;
+
+          const d = haversine(
+            lat, lon,
+            s.StationPosition.PositionLat,
+            s.StationPosition.PositionLon
+          );
+
+          if (d < min) {
+            min = d;
+            best = { s, a };
+          }
+        });
+
+        if (!best) {
+          log('❌ 附近沒有符合的站點');
+          return;
+        }
+
+        log(
+          `✅ 找到最近站點\n\n` +
+          `站名：${best.s.StationName.Zh_tw}\n` +
+          `距離：約 ${min.toFixed(0)} 公尺\n\n` +
+          `🚲 可借車：${best.a.AvailableRentBikes}\n` +
+          `🅿️ 可還車位：${best.a.AvailableReturnBikes}`
+        );
+
+      } catch (e) {
+        log(
+          '❌ 發生錯誤\n' +
+          '錯誤名稱：' + e.name + '\n' +
+          '錯誤訊息：' + e.message
+        );
+      }
+    }
+  </script>
+</body>
+</html>
