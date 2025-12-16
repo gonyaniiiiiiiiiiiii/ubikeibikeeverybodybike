@@ -13,7 +13,11 @@
 </head>
 <body>
   <h2>🚲 最近的 Ubike（高雄）</h2>
-  <button onclick="findNearestUbike()">📍 使用手機定位</button>
+  <button onclick="findNearestUbike()">📍 使用手機定位（除錯版）</button>
+  <div id="status" style="margin-top:8px;color:#555;"></div>
+  <pre id="debug" style="background:#f5f5f5;padding:8px;"></pre>
+
+  <pre id="result"()">📍 使用手機定位</button>
   <pre id="result"></pre>
   <div id="map"></div>
 
@@ -33,13 +37,30 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
+    function log(msg) {
+      document.getElementById("debug").textContent += msg + "\n";
+    }
+
+    function setStatus(msg) {
+      document.getElementById("status").textContent = msg;
+    }
+
     function findNearestUbike() {
+      document.getElementById("debug").textContent = "";
+      setStatus("開始請求定位…");
+      log("navigator.geolocation=" + !!navigator.geolocation);
+
       if (!navigator.geolocation) {
         alert("此瀏覽器不支援定位");
         return;
       }
 
-      navigator.geolocation.getCurrentPosition(async pos => {
+            navigator.geolocation.getCurrentPosition(async pos => {
+                setStatus("定位成功，取得座標");
+        log("latitude=" + pos.coords.latitude);
+        log("longitude=" + pos.coords.longitude);
+        log("accuracy=" + pos.coords.accuracy + " 公尺");
+
         const userLat = pos.coords.latitude;
         const userLon = pos.coords.longitude;
 
@@ -85,7 +106,10 @@
 
         map.setView([stationLat, stationLon], 17);
       }, err => {
-        alert("定位失敗：" + err.message);
+                setStatus("定位失敗");
+        log("錯誤碼=" + err.code);
+        log("錯誤訊息=" + err.message);
+        alert("定位失敗："：" + err.message);
       });
     }
   </script>
