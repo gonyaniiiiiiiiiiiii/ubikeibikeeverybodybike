@@ -1,98 +1,82 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8" />
-  <title>最近 Ubike（高雄｜穩定版）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 12px; }
-    button { padding: 12px 18px; font-size: 16px; }
-    #status { margin-top: 8px; color: #555; }
-    #map { height: 60vh; margin-top: 10px; border-radius: 12px; }
-    pre { background:#f5f5f5; padding:8px; border-radius:8px; }
-  </style>
+  <meta charset="UTF-8">
+  <title>Ubike 最近站點</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-  <h2>🚲 最近的 Ubike（高雄｜穩定版）</h2>
-  <button onclick="start()">📍 使用手機定位</button>
-  <div id="status"></div>
-  <pre id="result"></pre>
-  <div id="map"></div>
+  <h2>🚲 Ubike（高雄）</h2>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <button onclick="find('rent')">🚲 找可借車</button>
+  <button onclick="find('return')">🅿️ 找可還車</button>
+
+  <pre id="out">請點上方按鈕</pre>
+
   <script>
-    // ✅ 改用「站點基本資料（可前端存取，不會 CORS）」
-    const API_URL = "https://tdx.transportdata.tw/api/basic/v2/Bike/Station/City/Kaohsiung?$format=JSON";
-    let map, userMarker, stationMarker;
-
-    function setStatus(msg) {
-      document.getElementById('status').textContent = msg;
-    }
+    // ⭐⭐⭐ 只改這一行 ⭐⭐⭐
+    const API_BASE = "https://ubike-proxy.onrender.com";
 
     function haversine(lat1, lon1, lat2, lon2) {
       const R = 6371000;
       const toRad = d => d * Math.PI / 180;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*
+                Math.sin(dLon/2)**2;
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function start() {
-      setStatus('📡 定位中…');
+    async function find(mode) {
+      document.getElementById('out').textContent = '📍 定位中…';
 
-      navigator.geolocation.getCurrentPosition(async pos => {
-        const userLat = pos.coords.latitude;
-        const userLon = pos.coords.longitude;
+      const pos = await new Promise((ok, err) =>
+        navigator.geolocation.getCurrentPosition(ok, err)
+      );
 
-        setStatus('🔍 尋找最近 Ubike 站點…');
-        const res = await fetch(API_URL);
-        const data = await res.json();
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
 
-        let nearest = null;
-        let minDist = Infinity;
+      document.getElementById('out').textContent = '🔍 取得 Ubike 資料…';
 
-        data.forEach(s => {
-          const lat = s.StationPosition.PositionLat;
-          const lon = s.StationPosition.PositionLon;
-          const d = haversine(userLat, userLon, lat, lon);
-          if (d < minDist) {
-            minDist = d;
-            nearest = s;
-          }
-        });
+      const [stations, availability] = await Promise.all([
+        fetch(API_BASE + '/bike/station').then(r => r.json()),
+        fetch(API_BASE + '/bike/availability').then(r => r.json())
+      ]);
 
-        document.getElementById('result').textContent =
-          `最近站點：${nearest.StationName.Zh_tw}\n` +
-          `距離：約 ${minDist.toFixed(0)} 公尺`;
+      let best = null;
+      let min = Infinity;
 
-        if (!map) {
-          map = L.map('map').setView([userLat, userLon], 16);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-          }).addTo(map);
+      availability.forEach(a => {
+        if (mode === 'rent' && a.AvailableRentBikes === 0) return;
+        if (mode === 'return' && a.AvailableReturnBikes === 0) return;
+
+        const s = stations.find(st => st.StationUID === a.StationUID);
+        if (!s) return;
+
+        const d = haversine(
+          lat, lon,
+          s.StationPosition.PositionLat,
+          s.StationPosition.PositionLon
+        );
+
+        if (d < min) {
+          min = d;
+          best = { s, a };
         }
-
-        if (userMarker) userMarker.remove();
-        if (stationMarker) stationMarker.remove();
-
-        userMarker = L.marker([userLat, userLon]).addTo(map).bindPopup('你的位置');
-        stationMarker = L.marker([nearest.StationPosition.PositionLat, nearest.StationPosition.PositionLon])
-          .addTo(map)
-          .bindPopup(`<b>${nearest.StationName.Zh_tw}</b><br/>
-          <a href="https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${nearest.StationPosition.PositionLat},${nearest.StationPosition.PositionLon}" target="_blank">🧭 導航到這裡</a>`)
-          .openPopup();
-
-        map.setView([nearest.StationPosition.PositionLat, nearest.StationPosition.PositionLon], 17);
-        setStatus('✅ 完成（穩定版）');
-      }, err => {
-        setStatus('❌ 定位失敗：' + err.message);
-      }, {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
       });
+
+      if (!best) {
+        document.getElementById('out').textContent = '❌ 附近沒有符合的站點';
+        return;
+      }
+
+      document.getElementById('out').textContent =
+        `站點：${best.s.StationName.Zh_tw}\n` +
+        `距離：約 ${min.toFixed(0)} 公尺\n` +
+        `可借車：${best.a.AvailableRentBikes}\n` +
+        `可還車位：${best.a.AvailableReturnBikes}`;
     }
   </script>
 </body>
